@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#ffffff">
-    <title>J&M V51.3 AI</title>
+    <title>J&M V51.4 AI</title>
     
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -295,7 +295,7 @@
 <div id="aiModal" class="date-modal" onclick="document.getElementById('aiModal').classList.remove('open')">
     <div class="picker-box" onclick="event.stopPropagation()" style="width:90%; max-width:350px;">
         <h3 style="margin-top:0; color:#8B5CF6; display:flex; align-items:center; gap:10px;"><i class="fas fa-robot"></i> Gemini Dice:</h3>
-        <div id="aiContent" style="font-size:13px; line-height:1.5; min-height:100px; color:#1E293B;">
+        <div id="aiContent" style="font-size:13px; line-height:1.5; min-height:100px; color:#1E293B; max-height:350px; overflow-y:auto;">
             Cargando análisis...
         </div>
         <button onclick="document.getElementById('aiModal').classList.remove('open')" class="btn-main" style="margin-top:15px; padding:12px; background:#8B5CF6;">Entendido</button>
@@ -305,10 +305,11 @@
 <input type="file" hidden id="fileIn" onchange="restoreSmart(this)">
 
 <script>
-    // URL DE DATOS (MANTENEMOS LA VIEJA PARA NO PERDER TUS DATOS)
+    // --- CONFIGURACIÓN ---
+    // URL DE DATOS (LA VIEJA, PARA GUARDAR)
     const API_URL = "https://script.google.com/macros/s/AKfycbxEni9GJ4gxmbhmNsbzoYxS_SfhcorqsXj4zh93-qWIy5i2R4jwvgJ8L25GcU3h3Bkh/exec";
     
-    // NUEVA URL PARA IA (LA QUE ACABAMOS DE CREAR)
+    // URL DE INTELIGENCIA ARTIFICIAL (LA NUEVA QUE CREASTE)
     const API_AI_URL = "https://script.google.com/macros/s/AKfycbwlPvRoRkmIYW5p6VVhF0mM_kGC6c9EP1d3wIBnHDQ-IwMmTpSP_Ky4p017Hk_zcARREw/exec";
     
     const MONTHS_ES = ["ENE","FEB","MAR","ABR","MAY","JUN","JUL","AGO","SEP","OCT","NOV","DIC"];
@@ -321,7 +322,7 @@
     let pickerYear = currentDate.getFullYear();
     let drillDownCat = null;
 
-    // --- HELPER FORMATO ARGENTINA (Puntos miles, Coma decimales) ---
+    // --- HELPER FORMATO ARGENTINA ---
     const fmt = (n) => n.toLocaleString('es-AR', {minimumFractionDigits: 0, maximumFractionDigits: 2});
 
     window.onload = () => {
@@ -375,7 +376,7 @@
         });
     }
 
-    // --- ALLOC (ASIGNACIÓN) ---
+    // --- ALLOC ---
     function renderAllocWithAccordions() {
         const cont = document.getElementById('alloc-container'); cont.innerHTML = '';
         const incs = currentTxs.filter(t=>t.type=='inc'); const exps = currentTxs.filter(t=>t.type=='exp');
@@ -491,41 +492,49 @@
     function setSubTab(t) { document.getElementById('sec-txs').style.display=t=='txs'?'grid':'none'; document.getElementById('sec-alloc').style.display=t=='alloc'?'block':'none'; document.getElementById('tab-txs').className=`i-tab ${t=='txs'?'active':''}`; document.getElementById('tab-alloc').className=`i-tab ${t=='alloc'?'active':''}`; }
     function nav(v) { document.querySelectorAll('.view-section').forEach(x=>x.classList.remove('active')); document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active')); document.getElementById(`view-${v}`).classList.add('active'); document.getElementById(`nav-${v}`).classList.add('active'); }
 
-    // --- GEMINI NUEVA FUNCION ---
+    // --- GEMINI V2: MODO DETALLADO ---
     async function askGemini() {
         // UI
         document.getElementById('aiModal').classList.add('open');
-        document.getElementById('aiContent').innerHTML = '<div style="text-align:center; padding:30px;"><i class="fas fa-spinner fa-spin" style="font-size:30px; color:#8B5CF6;"></i><div style="margin-top:15px;">Pensando...</div></div>';
+        document.getElementById('aiContent').innerHTML = '<div style="text-align:center; padding:30px;"><i class="fas fa-brain fa-pulse" style="font-size:30px; color:#8B5CF6;"></i><div style="margin-top:15px; color:#64748B;">Analizando cada gasto...</div></div>';
         
-        // PREPARAR DATOS (Lectura segura de variables locales)
-        const inc = currentTxs.filter(t=>t.type=='inc').reduce((a,b)=>a+b.amount,0);
-        const exp = currentTxs.filter(t=>t.type=='exp').reduce((a,b)=>a+b.amount,0);
-        
-        // Top Categorías
-        const catMap = {};
-        currentTxs.filter(t=>t.type=='exp').forEach(t => { catMap[t.cat] = (catMap[t.cat]||0) + t.amount; });
-        const topCats = Object.entries(catMap).sort((a,b)=>b[1]-a[1]).slice(0,3).map(x=> `${x[0]}: $${Math.round(x[1])}`);
+        // 1. PREPARAR DATOS DETALLADOS
+        let txListText = currentTxs
+            .filter(t => t.type === 'exp')
+            .map(t => `- Día ${t.date.split('-')[2]}: ${t.desc} ($${Math.round(t.amount)}) [${t.cat}]`)
+            .join('\n');
+            
+        if(txListText.length > 8000) txListText = txListText.substring(0, 8000) + "... (lista cortada)";
 
-        // ENVÍO AL MICROSERVICIO NUEVO
+        const totalInc = currentTxs.filter(t=>t.type=='inc').reduce((a,b)=>a+b.amount,0);
+        const totalExp = currentTxs.filter(t=>t.type=='exp').reduce((a,b)=>a+b.amount,0);
+
+        // 2. ENVÍO AL MICROSERVICIO
         try {
             const r = await fetch(API_AI_URL, { 
                 method: 'POST',
                 body: JSON.stringify({
+                    mode: 'detailed',
                     context: {
-                        inc: fmt(inc),
-                        exp: fmt(exp),
-                        bal: fmt(inc - exp),
-                        topCats: topCats
+                        inc: fmt(totalInc),
+                        exp: fmt(totalExp),
+                        bal: fmt(totalInc - totalExp),
+                        txs: txListText 
                     }
                 })
             });
             const res = await r.json();
-            // Limpieza de formato Markdown
-            let cleanText = res.response.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>').replace(/```html/g, '').replace(/```/g, '').replace(/\n/g, '<br>');
+            
+            // 3. RENDERIZAR RESPUESTA
+            let cleanText = res.response
+                .replace(/^### (.*$)/gim, '<h4 style="color:#8B5CF6; margin:10px 0 5px 0;">$1</h4>')
+                .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+                .replace(/\n/g, '<br>');
+                
             document.getElementById('aiContent').innerHTML = cleanText;
             
         } catch (e) {
-            document.getElementById('aiContent').innerHTML = "<span style='color:red'>Error conectando con la IA.</span>";
+            document.getElementById('aiContent').innerHTML = "<span style='color:red'>Error: La IA no pudo procesar tantos datos hoy.</span>";
         }
     }
 </script>
